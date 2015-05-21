@@ -1,0 +1,50 @@
+#!/usr/bin/env python2.7
+from subprocess import check_call
+
+filename = "exit_gen.go"
+
+with open("codes.tsv") as fp:
+    rows = []
+    for line in fp:
+        name, code, desc = line.strip().split("\t")
+        code = int(code)
+        rows.append((name, code, desc))
+
+out = open(filename, "w")
+out.write("""\
+package exit
+import "os"
+""")
+
+out.write("""
+// ExBase is the base value for error codes. You should define application specific status code as it less than ExBase.
+const ExBase=%s\n
+""" % (min(int(code) for _, code, _ in rows if code > 0)))
+
+out.write("const (\n")
+for name, code, desc in rows:
+    out.write("// Ex%s indicates that %s\n" % (name, desc,))
+    out.write("Ex%s = %s\n" % (name, code))
+out.write(")\n")
+
+for name, code, desc in rows:
+    out.write("// %s exit with status code Ex%s(%d).\n" % (name, name, code))
+    out.write("// It indicates that %s\n" % (desc[0].lower() + desc[1:]))
+    out.write("func %s () { os.Exit(Ex%s) } \n" % (name, name))
+
+    out.write("// %s exit with status code Ex%s(%d).\n" % (name, name, code))
+    out.write("// It indicates that %s\n" % (desc[0].lower() + desc[1:]))
+    out.write("func (e *Exit) %s () { e.Exit(Ex%s) } \n" % (name, name))
+
+    if name == 'OK':
+        continue
+
+    out.write("// %sf print error message to Stderr and exit with status code Ex%s(%d).\n" % (name, name, code))
+    out.write("// It indicates that %s\n" % (desc[0].lower() + desc[1:]))
+    out.write("""\
+        func (e *Exit) %sf (format string, args... interface{}) {
+            e.Exitf(Ex%s, format, args...)
+        }
+    """ % (name, name))
+out.close()
+check_call(["go", "fmt", filename])
